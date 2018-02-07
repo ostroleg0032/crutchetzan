@@ -4,8 +4,8 @@ namespace core\classes;
 
 //CZAN ROUTE SHORTCUTS
 define('CRS', [
-    ':int:[a-zA-Z][a-zA-Z0-9]*:' => '[1-9][0-9]*',
-    ':str:[a-zA-Z][a-zA-Z0-9]*:' => '[a-zA-Z0-9]+'
+    ':int:([a-zA-Z][a-zA-Z0-9]*):' => '[1-9][0-9]*',
+    ':str:([a-zA-Z][a-zA-Z0-9]*):' => '[a-zA-Z]+'
 ]);
 
 class CzanRoute {
@@ -13,7 +13,11 @@ class CzanRoute {
     private $czan_url;
     private $action_name;
 
-    public function __construct($czan_url, $action) {
+    public function get_action_name() {
+        return $this->action_name;
+    }
+
+    public function __construct($czan_url, $action_name) {
         $this->czan_url = $czan_url;
         $this->action_name = $action_name;
     }
@@ -21,13 +25,28 @@ class CzanRoute {
     public function to_regex_pattern() {
         $pattern = $this->czan_url;
         $pattern = preg_replace('/\//', '\/', $pattern);
-        $pattern = preg_replace('/:int:[a-zA-Z][a-zA-Z0-9]*:/', '[1-9][0-9]*', $pattern);
+        foreach(CRS as $shortcut => $real) {
+            $pattern = preg_replace("/{$shortcut}/", $real, $pattern);
+        }
         $pattern = "/^{$pattern}$/";
         return $pattern;
     }
 
     public function get_var_pos() {
-        return explode('/', $this->czan_url);
+        $splitted_czan_url = explode('/', $this->czan_url);
+        $res = [];
+        $ctr = 0;
+        foreach ($splitted_czan_url as $part) {
+            foreach (CRS as $shortcut => $real) {
+                preg_match("/^{$shortcut}$/", $part, $match);
+                if ($match) {
+                    $res[$ctr] = $match[1];
+                    break;
+                }
+            }
+            $ctr++;
+        }
+        return $res;
     }
 }
 
@@ -53,12 +72,39 @@ class CzanRouter {
 
 
     public function run() {
-        $url = trim($_SERVER['REQUEST_URI'], '/');
+        $request_uri = trim($_SERVER['REQUEST_URI'], '/');
+        $url = parse_url($request_uri, PHP_URL_PATH);
         if ($czan_route = $this->match($url)) {
-            echo "This route was founded!";
+            $var_pos = $czan_route->get_var_pos();
+            $action = $czan_route->get_action_name() . "Action";
+            $splitted_url = explode('/', $url);
+            if ($url != "") {
+                $controller = ucfirst($splitted_url[0]) . "Controller";
+            } else {
+                $controller = "IndexPageController";
+            }
+            $vars = [];
+            foreach ($var_pos as $index => $var_name) {
+                $vars[$var_name] = $splitted_url[$index];
+            }
+            $res = [];
+            $res["controller"] = $controller;
+            $res["action"] = $action;
+            $res["vars"] = $vars;
+            return $res;
         } else {
-            echo "No route!";
+            return null;
         }
-        var_dump($czan_route->get_var_pos());
     }
 }
+
+/*
+[
+    controller_name => "", if url = "" then IndexPageController;
+    action_name => "",
+    vars => [
+        id
+        name
+    ]
+]
+*/
